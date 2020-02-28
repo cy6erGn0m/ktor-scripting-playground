@@ -1,0 +1,13 @@
+{
+  "id": "example",
+  "title": "Example plugin",
+  "deprecated": false,
+  "webSite": "https://ktor.io",
+  "description": "This is an example plugin description.\n\nThe second paragraph.",
+  "versionsMappings": [
+    {
+      "ktorVersionRange": "1.3.0+",
+      "coordinates": "com.example:example-plugin:1.0.0"
+    }
+  ]
+}
