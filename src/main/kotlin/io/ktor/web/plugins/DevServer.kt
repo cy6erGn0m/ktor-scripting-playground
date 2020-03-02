@@ -11,20 +11,21 @@ import io.ktor.server.engine.*
 import io.ktor.util.*
 import io.ktor.web.plugins.scripting.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.*
 import kotlinx.coroutines.flow.*
 import kotlinx.html.*
 import kotlinx.html.stream.*
 import org.slf4j.*
 import java.io.*
 import java.util.concurrent.atomic.*
+import kotlin.time.*
 
-@UseExperimental(KtorExperimentalAPI::class)
+@UseExperimental(KtorExperimentalAPI::class, ExperimentalTime::class)
 fun main() {
     val configDir = File("plugins.d")
     val model = AtomicReference(collectModel(configDir).first)
 
     fileChanges(configDir) { it.isDirectory || it.extension == "json" }
+        .debounceChanges(300.milliseconds)
         .onEach {
             try {
                 LoggerFactory.getLogger("Config").info("Config reloading...")
@@ -94,26 +95,4 @@ internal suspend fun ApplicationCall.respondHtml(
             builder()
         }
     }, ContentType.Text.Html.withCharset(Charsets.UTF_8), status)
-}
-
-private fun <T> Flow<Deferred<T>>.awaitingSuccessful(): Flow<T> {
-    val completed = Channel<T>()
-
-    GlobalScope.launch {
-        onCompletion {
-            // TODO
-        }.collect { deferred ->
-            deferred.invokeOnCompletion { failure ->
-                if (failure == null) {
-                    completed.sendBlocking(deferred.getCompleted())
-                }
-            }
-        }
-    }
-
-    return flow<T> {
-        completed.consumeEach { result ->
-            emit(result)
-        }
-    }
 }
