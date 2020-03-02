@@ -1,41 +1,18 @@
 package io.ktor.web.plugins.pages
 
 import io.ktor.web.plugins.model.*
+import io.ktor.web.plugins.scripting.Lookup
+import kotlinx.coroutines.runBlocking
 import kotlinx.html.*
+import kotlinx.html.stream.createHTML
+import kotlin.reflect.full.primaryConstructor
 
-@Deprecated("")
 fun buildMainPage(
     model: AppModel
-): String = buildPage("Ktor plugin portal") {
-    h1 { text("Ktor plugin portal") }
-
-    if (model.validationResult != null) {
-        div {
-            p {
-                text("Development mode. ")
-
-                if (model.validationResult.hasIssues) {
-                    text("There are issues. ")
-                }
-
-                text("See ")
-                a(href = "/dev") {
-                    text("dev")
-                }
-                text(" page for details.")
-            }
-        }
-    }
-
-    div {
-        h2 { text("Featured plugins") }
-
-        model.featuredPlugins.forEach { plugin ->
-            p {
-                a(href = WebSite.pluginPage(plugin)) {
-                    text(plugin.title)
-                }
-            }
+): String = buildString {
+    createHTML().html {
+        runBlocking {
+            Lookup.scriptClassFor("index").pageClass.primaryConstructor!!.call(model, this)
         }
     }
 }

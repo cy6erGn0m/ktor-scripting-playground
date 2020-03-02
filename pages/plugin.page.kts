@@ -1,9 +1,5 @@
-@file:PageLocation("io.ktor.web.plugins.pages.PluginPage")
-//@file:PageRoute("/plugins/{pluginId}.html")
+@file:PageRoute("/plugins/{pluginId}.html")
 
-//pluginId
-
-val pluginId: String by model.parameters
 val pluginDescriptor = model.byPluginId[pluginId]
 
 pageTemplate("Plugin ${pluginDescriptor?.title ?: pluginId}") {

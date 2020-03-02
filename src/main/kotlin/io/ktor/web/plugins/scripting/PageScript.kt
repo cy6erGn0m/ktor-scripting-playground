@@ -8,6 +8,7 @@ import kotlin.reflect.full.*
 import kotlin.script.experimental.annotations.*
 import kotlin.script.experimental.api.*
 import kotlin.script.experimental.jvm.*
+import kotlin.script.experimental.util.PropertiesCollection
 
 // it is referenced in META-INF
 @Suppress("unused")
@@ -136,6 +137,10 @@ object PageRouteRefinement : RefineScriptCompilationConfigurationHandler {
             parameterNames.forEach { parameterName ->
                 providedProperties(parameterName to KotlinType(String::class))
             }
+
+            route(path)
         }.asSuccess()
     }
 }
+
+val ScriptCompilationConfigurationKeys.route by PropertiesCollection.key<String>()

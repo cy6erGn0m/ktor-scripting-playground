@@ -7,11 +7,11 @@ pageTemplate("Ktor plugin portal") {
                 text("Development mode. ")
 
                 if (validation.hasIssues) {
-                    text("There are issues. ")
+                    text("There are issues.  ")
                 }
 
                 text("See ")
-                a(href = "/dev") {
+                a(href = "/dev.html") {
                     text("dev")
                 }
                 text(" page for details.")
