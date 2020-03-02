@@ -71,7 +71,7 @@ fun main() {
 
         val pageScriptChanges = fileChanges(Lookup.pagesRoot) {
             it.isDirectory || it.name.endsWith(".page.kts")
-        }
+        }.debounceChanges(500.milliseconds)
 
         routing {
             Lookup.collecting(pageScriptChanges)
