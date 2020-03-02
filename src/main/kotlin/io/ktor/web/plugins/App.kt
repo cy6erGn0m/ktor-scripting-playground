@@ -48,7 +48,7 @@ fun main(args: Array<String>) {
 
             println("Generating ${plugin.id}")
 
-            val page = buildPluginPage(plugin)
+            val page = buildPluginPage(model, plugin)
 
             val fileName = WebSite.pluginPage(plugin).removePrefix("/")
 

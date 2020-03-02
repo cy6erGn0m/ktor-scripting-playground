@@ -60,7 +60,8 @@ private fun Route.bindPages(model: () -> AppModel) {
         val logger = LoggerFactory.getLogger("routing")!!
 
         allNames.forEach { pageName ->
-            val pageClass = Lookup.scriptClassFor(pageName)
+            val compiledPage = Lookup.scriptClassFor(pageName)
+            val pageClass = compiledPage.pageClass
 
             val locationClass =
                 pageClass.primaryConstructor?.parameters
@@ -69,8 +70,19 @@ private fun Route.bindPages(model: () -> AppModel) {
 
             val locationPath = locationClass?.findAnnotation<Location>()?.path
 
-//            val routeAnnotation = pageClass.findAnnotation<PageRoute>()
+            val routeAnnotation = compiledPage.route
+            val parameterNames = routeAnnotation?.let { RoutingPath.parse(it) }
+                ?.parts?.filter { it.kind == RoutingPathSegmentKind.Parameter }
+                ?.mapNotNull {
+                    it.value.substringAfter("{")
+                        .substringBefore("}")
+                        .trim().removeSuffix("?").trimEnd()
+                        .removeSuffix("...").trimEnd()
+                        .takeIf { it.isNotEmpty() }
+                }.orEmpty()
+
             val pageRoute = when {
+                routeAnnotation != null -> routeAnnotation
                 locationPath != null -> locationPath
                 pageName == "index" -> "/"
                 else -> "/$pageName.html"
@@ -84,7 +96,7 @@ private fun Route.bindPages(model: () -> AppModel) {
                     else -> model().copy(parameters = call.parameters)
                 }
                 // TODO controller logic?
-                call.respondPage(currentModel, pageName, locationClass)
+                call.respondPage(currentModel, compiledPage, locationClass, parameterNames)
             }
         }
     }
@@ -103,23 +115,25 @@ private suspend fun ApplicationCall.respondHtml(
 
 private suspend fun ApplicationCall.respondPage(
     model: AppModel,
-    name: String,
+    compiledPage: Lookup.CompiledPage,
     locationClass: KClass<*>?,
+    parameterNames: List<String>,
     status: HttpStatusCode = HttpStatusCode.OK
 ) {
 
     val instance = locationClass?.let { application.locations.resolve<Any>(it, model.parameters) }
 
     respondHtml(status = status) {
-        val scriptClass = Lookup.scriptClassFor(name)
-
-        val constructor = scriptClass.primaryConstructor!!
-
-        if (instance == null) {
-            constructor.call(model, this)
-        } else {
-            constructor.call(model, this, instance)
+        val constructor = compiledPage.pageClass.primaryConstructor!!
+        val args = mutableListOf<Any?>()
+        args += model
+        args += this
+        if (instance != null) {
+            args += instance
         }
+        args.addAll(parameterNames.map { parameters[it] })
+
+        constructor.call(*args.toTypedArray())
     }
 }
 
