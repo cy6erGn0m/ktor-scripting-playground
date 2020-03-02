@@ -27,7 +27,7 @@ pageTemplate("Plugin ${pluginDescriptor?.title ?: pluginId}") {
 fun BODY.versions(pluginDescriptor: PluginDescriptor) {
     if (pluginDescriptor.versionsMappings.size == 1) {
         p {
-            text("Maven coordinates: ${pluginDescriptor.versionsMappings.single().coordinates}")
+            text("Maven coordinates: ${pluginDescriptor.versionsMappings.single().coordinates}.")
         }
     } else {
         p {
