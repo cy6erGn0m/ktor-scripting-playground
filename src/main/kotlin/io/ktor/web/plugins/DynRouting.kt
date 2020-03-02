@@ -8,8 +8,8 @@ import io.ktor.web.plugins.model.*
 import io.ktor.web.plugins.scripting.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import org.slf4j.*
-import java.util.concurrent.*
+import kotlinx.html.HTML
+import java.util.concurrent.ConcurrentSkipListSet
 import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
@@ -80,15 +80,26 @@ private suspend fun ApplicationCall.respondPage(
     val instance = locationClass?.let { application.locations.resolve<Any>(it, model.parameters) }
 
     respondHtml(status = status) {
-        val constructor = compiledPage.pageClass.primaryConstructor!!
-        val args = mutableListOf<Any?>()
-        args += model
-        args += this
-        if (instance != null) {
-            args += instance
-        }
-        args.addAll(parameterNames.map { parameters[it] })
-
-        constructor.call(*args.toTypedArray())
+        generatePageHtml(compiledPage, model, this, instance, parameterNames, parameters)
     }
+}
+
+internal fun generatePageHtml(
+    compiledPage: Lookup.CompiledPage,
+    model: AppModel,
+    html: HTML,
+    locationInstance: Any?,
+    parameterNames: List<String>,
+    parameterValues: Parameters
+) {
+    val constructor = compiledPage.pageClass.primaryConstructor!!
+    val args = mutableListOf<Any?>()
+    args += model
+    args += html
+    if (locationInstance != null) {
+        args += locationInstance
+    }
+    args.addAll(parameterNames.map { parameterValues[it] })
+
+    constructor.call(*args.toTypedArray())
 }
