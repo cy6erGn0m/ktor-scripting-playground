@@ -12,7 +12,7 @@ fun buildMainPage(
 ): String = buildString {
     createHTML().html {
         runBlocking {
-            Lookup.scriptClassFor("index").pageClass.primaryConstructor!!.call(model, this)
+            Lookup.scriptClassFor("index")?.pageClass?.primaryConstructor!!.call(model, this)
         }
     }
 }

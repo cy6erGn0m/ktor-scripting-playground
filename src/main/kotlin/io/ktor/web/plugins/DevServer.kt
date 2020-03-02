@@ -9,19 +9,30 @@ import io.ktor.routing.*
 import io.ktor.server.cio.*
 import io.ktor.server.engine.*
 import io.ktor.util.*
-import io.ktor.web.plugins.model.*
 import io.ktor.web.plugins.scripting.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.*
+import kotlinx.coroutines.flow.*
 import kotlinx.html.*
 import kotlinx.html.stream.*
 import org.slf4j.*
 import java.io.*
-import kotlin.reflect.*
-import kotlin.reflect.full.*
+import java.util.concurrent.atomic.*
 
 @UseExperimental(KtorExperimentalAPI::class)
 fun main() {
-    var (model, validation) = collectModel()
+    val configDir = File("plugins.d")
+    val model = AtomicReference(collectModel(configDir).first)
+
+    fileChanges(configDir) { it.isDirectory || it.extension == "json" }
+        .onEach {
+            try {
+                LoggerFactory.getLogger("Config").info("Config reloading...")
+                model.set(collectModel(configDir).first)
+            } catch (cause: Throwable) {
+                cause.printStackTrace()
+            }
+        }.launchIn(GlobalScope)
 
     val server = embeddedServer(CIO, port = 8080) {
 //        install(ConditionalHeaders)
@@ -29,20 +40,42 @@ fun main() {
         install(AutoHeadResponse)
         install(Locations)
 
+        install(StatusPages) {
+            status(HttpStatusCode.NotFound) {
+                call.respondHtml {
+                    head {
+                        title("404 Page not found")
+                    }
+                    body {
+                        h3 {
+                            text("404 Page not found")
+                        }
+                    }
+                }
+            }
+
+            status(HttpStatusCode.InternalServerError) {
+                call.respondHtml {
+                    head {
+                        title("Internal server error")
+                    }
+                    body {
+                        h3 {
+                            text("Server failed to respond to the request due to an internal error.")
+                        }
+                    }
+                }
+            }
+        }
+
+        val pageScriptChanges = fileChanges(Lookup.pagesRoot) {
+            it.isDirectory || it.name.endsWith(".page.kts")
+        }
+
         routing {
-            bindPages { model }
-//            get("/") {
-//                call.respondPage(model, "index")
-//            }
-//            get("/dev") {
-//                call.respondPage(model, "dev")
-//            }
-//            get("/plugins/{pluginId}.html") {
-//                val pluginId: String by call.parameters
-//                val pluginDescriptor = model.byPluginId[pluginId]
-//                val status = if (pluginDescriptor == null) HttpStatusCode.NotFound else HttpStatusCode.OK
-//                call.respondPage(model.copy(parameters = call.parameters), "plugin", status)
-//            }
+            Lookup.collecting(pageScriptChanges)
+                .awaitingSuccessful()
+                .collectAndRegisterRoutes(this) { model.get() }
         }
     }
 
@@ -52,57 +85,7 @@ fun main() {
     server.start(wait = true)
 }
 
-private fun Route.bindPages(model: () -> AppModel) {
-    val allNames = File("pages").listFiles().orEmpty().filter { it.name.endsWith(".page.kts") }
-        .map { it.name.removeSuffix(".page.kts") }
-
-    runBlocking {
-        val logger = LoggerFactory.getLogger("routing")!!
-
-        allNames.forEach { pageName ->
-            val compiledPage = Lookup.scriptClassFor(pageName)
-            val pageClass = compiledPage.pageClass
-
-            val locationClass =
-                pageClass.primaryConstructor?.parameters
-                    ?.mapNotNull { it.type.classifier as? KClass<*> }
-                    ?.singleOrNull { it.findAnnotation<Location>() != null }
-
-            val locationPath = locationClass?.findAnnotation<Location>()?.path
-
-            val routeAnnotation = compiledPage.route
-            val parameterNames = routeAnnotation?.let { RoutingPath.parse(it) }
-                ?.parts?.filter { it.kind == RoutingPathSegmentKind.Parameter }
-                ?.mapNotNull {
-                    it.value.substringAfter("{")
-                        .substringBefore("}")
-                        .trim().removeSuffix("?").trimEnd()
-                        .removeSuffix("...").trimEnd()
-                        .takeIf { it.isNotEmpty() }
-                }.orEmpty()
-
-            val pageRoute = when {
-                routeAnnotation != null -> routeAnnotation
-                locationPath != null -> locationPath
-                pageName == "index" -> "/"
-                else -> "/$pageName.html"
-            }
-
-            logger.info("Binding $pageName at $pageRoute")
-
-            get(pageRoute) {
-                val currentModel = when (locationPath) {
-                    null -> model()
-                    else -> model().copy(parameters = call.parameters)
-                }
-                // TODO controller logic?
-                call.respondPage(currentModel, compiledPage, locationClass, parameterNames)
-            }
-        }
-    }
-}
-
-private suspend fun ApplicationCall.respondHtml(
+internal suspend fun ApplicationCall.respondHtml(
     status: HttpStatusCode = HttpStatusCode.OK,
     builder: suspend HTML.() -> Unit
 ) {
@@ -113,30 +96,24 @@ private suspend fun ApplicationCall.respondHtml(
     }, ContentType.Text.Html.withCharset(Charsets.UTF_8), status)
 }
 
-private suspend fun ApplicationCall.respondPage(
-    model: AppModel,
-    compiledPage: Lookup.CompiledPage,
-    locationClass: KClass<*>?,
-    parameterNames: List<String>,
-    status: HttpStatusCode = HttpStatusCode.OK
-) {
+private fun <T> Flow<Deferred<T>>.awaitingSuccessful(): Flow<T> {
+    val completed = Channel<T>()
 
-    val instance = locationClass?.let { application.locations.resolve<Any>(it, model.parameters) }
-
-    respondHtml(status = status) {
-        val constructor = compiledPage.pageClass.primaryConstructor!!
-        val args = mutableListOf<Any?>()
-        args += model
-        args += this
-        if (instance != null) {
-            args += instance
+    GlobalScope.launch {
+        onCompletion {
+            // TODO
+        }.collect { deferred ->
+            deferred.invokeOnCompletion { failure ->
+                if (failure == null) {
+                    completed.sendBlocking(deferred.getCompleted())
+                }
+            }
         }
-        args.addAll(parameterNames.map { parameters[it] })
-
-        constructor.call(*args.toTypedArray())
     }
-}
 
-private suspend fun ApplicationCall.respondHtmlText(text: String) {
-    respondText(text, ContentType.Text.Html.withCharset(Charsets.UTF_8))
+    return flow<T> {
+        completed.consumeEach { result ->
+            emit(result)
+        }
+    }
 }

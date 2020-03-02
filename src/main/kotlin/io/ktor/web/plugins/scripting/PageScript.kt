@@ -122,16 +122,12 @@ object PageRouteRefinement : RefineScriptCompilationConfigurationHandler {
         }
 
         val parameterNames = parsed.parts.filter { it.kind == RoutingPathSegmentKind.Parameter }
-            .mapNotNull {
-                it.value.substringAfter("{").substringBefore("}")
+            .mapNotNull { segment ->
+                segment.value.substringAfter("{").substringBefore("}")
                     .trim().removeSuffix("?")
                     .removeSuffix("...").trim()
                     .takeIf { it.isNotEmpty() }
             }
-
-        if (parameterNames.isEmpty()) {
-            return context.compilationConfiguration.asSuccess()
-        }
 
         return ScriptCompilationConfiguration(context.compilationConfiguration) {
             parameterNames.forEach { parameterName ->

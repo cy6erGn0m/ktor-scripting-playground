@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.*
 import java.io.File
 import java.nio.file.*
 
-fun fileWatcherFlow(rootDir: File, predicate: (File) -> Boolean): Flow<File> = flow<File> {
+fun fileChanges(rootDir: File, predicate: (File) -> Boolean): Flow<File> = flow<File> {
     check(rootDir.isDirectory)
 
     do {
@@ -16,7 +16,7 @@ fun fileWatcherFlow(rootDir: File, predicate: (File) -> Boolean): Flow<File> = f
         rootDir.walkTopDown()
             .onEnter {
                 if (it != rootDir && predicate(it)) {
-                    it.toPath().let { path -> keys[path] = path.registerAll(watcher) }
+                    it.toPath().toAbsolutePath().let { path -> keys[path] = path.registerAll(watcher) }
                     true
                 } else it == rootDir
             }
@@ -33,7 +33,7 @@ fun fileWatcherFlow(rootDir: File, predicate: (File) -> Boolean): Flow<File> = f
                 selectedKey.pollEvents().forEach { event ->
                     val path = (event.context() as? Path)?.let { sub -> basePath?.let { sup ->
                         sup.resolve(sub)
-                    }}
+                    }}?.toAbsolutePath()
 
                     val file = path?.toFile()
                     if (file != null && predicate(file)) {

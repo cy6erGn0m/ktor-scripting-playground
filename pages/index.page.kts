@@ -7,7 +7,7 @@ pageTemplate("Ktor plugin portal") {
                 text("Development mode. ")
 
                 if (validation.hasIssues) {
-                    text("There are issues.  ")
+                    text("There are ${validation.collected.size} issue(s).  ")
                 }
 
                 text("See ")
@@ -22,10 +22,23 @@ pageTemplate("Ktor plugin portal") {
     div {
         h2 { text("Featured plugins") }
 
-        model.featuredPlugins.forEach { plugin ->
-            p {
-                a(href = WebSite.pluginPage(plugin)) {
-                    text(plugin.title)
+        table {
+            thead {
+                tr {
+                    th {
+                        text("Title")
+                    }
+                }
+            }
+            tbody {
+                model.featuredPlugins.forEach { plugin ->
+                    tr {
+                        td {
+                            a(href = WebSite.pluginPage(plugin)) {
+                                text(plugin.title)
+                            }
+                        }
+                    }
                 }
             }
         }

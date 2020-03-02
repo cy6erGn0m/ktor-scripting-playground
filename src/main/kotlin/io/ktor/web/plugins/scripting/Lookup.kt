@@ -1,27 +1,28 @@
 package io.ktor.web.plugins.scripting
 
-import io.ktor.web.plugins.fileWatcherFlow
-import io.ktor.web.plugins.model.*
+import io.ktor.routing.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.html.*
 import org.slf4j.*
 import java.io.*
 import java.util.concurrent.*
 import java.util.concurrent.CancellationException
-import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.script.experimental.api.*
 import kotlin.script.experimental.host.*
 import kotlin.script.experimental.jvmhost.*
-import kotlin.script.experimental.util.PropertiesCollection
+import kotlin.script.experimental.util.*
 
 object Lookup : CoroutineScope {
     class CompiledPage(
+        val pageName: String,
         val pageClass: KClass<PageScript>,
-        val route: String?
-    )
+        val routePath: String
+    ) {
+        val route: RoutingPath = RoutingPath.parse(routePath)
+    }
 
     override val coroutineContext: CoroutineContext
         get() = Dispatchers.Default
@@ -36,32 +37,46 @@ object Lookup : CoroutineScope {
 
     private val pageScriptClass = PageScript::class
 
-    private val pagesRoot = File("pages").absoluteFile
-    private val watchJob = fileWatcherFlow(File("pages")) { it.isDirectory || it.name.endsWith(".page.kts")}
-        .onEach { file ->
-            if (file.exists()) {
-                val newDeferred = async {
-                    compileScript(file.relativeTo(pagesRoot)!!.path.removeSuffix(".page.kts"), null)
-                }
+    val pagesRoot: File = File("pages").absoluteFile
 
-                val old = compiledCache.put(file.path, newDeferred)
-                old?.cancel()
-            } else {
-                compiledCache.remove(file.path)?.cancel()
-            }
+    fun collecting(input: Flow<File>): Flow<Deferred<CompiledPage>> = input.mapNotNull { file ->
+        if (file.exists()) {
+            val before = compiledCache[file.path]
+            val newDeferred = pageCompilationAsync(file, before)
+
+            val old = compiledCache.put(file.path, newDeferred)
+            old?.cancel(RestartCancellationException())
+
+            newDeferred
+        } else {
+            null
         }
-        .launchIn(this)
+    }
 
-    suspend fun scriptClassFor(name: String): CompiledPage {
+    suspend fun scriptClassFor(name: String): CompiledPage? {
+        val file = fileForName(name)
+        if (!file.exists()) {
+            return null
+        }
+
         do {
-            val result = compiledCache.computeIfAbsent(name) {
-                async {
-                    compileScript(name, null)
-                }
+            val result = compiledCache.computeIfAbsent(file.path) {
+                pageCompilationAsync(file)
             }
             try {
                 return result.await()
-            } catch (cause: CancellationException) {
+            } catch (notFound: FileNotFoundException) {
+                compiledCache.remove(name, result)
+                return null
+            } catch (cause: Throwable) {
+                if (!fileForName(name).exists()) {
+                    return null
+                }
+
+                if (!result.isCancelled || result.getCompletionExceptionOrNull() !is RestartCancellationException) {
+                    throw cause
+                }
+            } catch (cause: kotlinx.coroutines.CancellationException) {
                 if (!result.isCancelled) {
                     throw cause
                 }
@@ -69,9 +84,26 @@ object Lookup : CoroutineScope {
         } while (true)
     }
 
-    @Deprecated("")
-    suspend fun scriptFor(name: String, html: HTML, model: AppModel): PageScript {
-        return scriptClassFor(name).pageClass.primaryConstructor!!.call(model, html)
+    private fun pageCompilationAsync(
+        file: File,
+        before: Deferred<CompiledPage>? = null
+    ): Deferred<CompiledPage> {
+        return async {
+            val pageName = file.absoluteFile.relativeTo(pagesRoot).path
+                .removeSuffix(".page.kts")
+            val content = file.readText()
+            val cachedContent = fileContentCache.put(pageName, content)
+
+            try {
+                if (cachedContent == content && before != null && before.isCompleted && !before.isCancelled) {
+                    return@async before.await()
+                }
+            } catch (_: Throwable) {
+            }
+
+            compileScript(pageName, content).takeIf { file.exists() }
+                ?: throw CancellationException("Script file disappeared: $file", null)
+        }
     }
 
     private suspend fun compileScript(name: String, content: String?): CompiledPage {
@@ -98,12 +130,19 @@ object Lookup : CoroutineScope {
         val path0: String? = config[PropertiesCollection.Key<String>("route", null)]
         val rawClass = result.valueOrThrow().getClass(null).valueOrThrow()
 
+        val routePath = when {
+            path0 != null -> path0
+            // TODO location
+            name == "index" -> "/"
+            else -> "$name.html"
+        }
+
         logger.info("Compiled successfully.")
 
         if (rawClass.isSubclassOf(pageScriptClass)) {
             @Suppress("UNCHECKED_CAST")
             val pageClass = rawClass as KClass<PageScript>
-            return CompiledPage(pageClass, path0)
+            return CompiledPage(name, pageClass, routePath)
         } else {
             error("The resulting compiled script class $rawClass is not a subclass of PageScript class.")
         }
@@ -112,5 +151,8 @@ object Lookup : CoroutineScope {
     private fun fileForName(name: String): File = listOf(name, "pages/$name.page.kts")
         .map { File(it) }
         .firstOrNull { it.exists() }
+        ?.absoluteFile
         ?: error("No page with name $name found.")
 }
+
+private class RestartCancellationException : CancellationException("Compilation cancelled due to script change.")

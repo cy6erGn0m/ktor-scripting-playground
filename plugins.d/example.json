@@ -8,6 +8,10 @@
     {
       "ktorVersionRange": "1.3.0+",
       "coordinates": "com.example:example-plugin:1.0.0"
+    },
+    {
+      "ktorVersionRange": "1.2.0+",
+      "coordinates": "com.example:example-plugin:0.0.9"
     }
   ]
 }
