@@ -5,10 +5,7 @@ import io.ktor.http.parametersOf
 import io.ktor.routing.RoutingPathSegmentKind
 import io.ktor.web.plugins.model.AppModel
 import io.ktor.web.plugins.scripting.Lookup
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.*
 import kotlinx.html.html
 import kotlinx.html.stream.appendHTML
 import org.slf4j.LoggerFactory
@@ -26,6 +23,7 @@ suspend fun generateSite(
     pageNames.forEach { pageName ->
         Lookup.scriptClassFor(pageName)?.let { page ->
             paramFlow(pageName, model)
+                .filter { parameters -> page.routeParameterNames.all { it in parameters } }
                 .collect { parameters ->
                     val pathSubstituted = page.route.parts.joinToString("/") { segment ->
                         when (segment.kind) {
@@ -69,6 +67,7 @@ suspend fun generateSite(
 fun paramFlow(pageName: String, model: AppModel): Flow<Parameters> {
     return when (pageName) {
         "plugin" -> pluginsFlow(model)
+        "tag" -> tagsFlow(model)
         else -> flowOf(Parameters.Empty)
     }
 }
@@ -80,3 +79,6 @@ private fun pluginsFlow(model: AppModel): Flow<Parameters> {
         }
     }
 }
+
+private fun tagsFlow(model: AppModel): Flow<Parameters> =
+    model.tags.keys.asFlow().map { parametersOf("tag", it) }

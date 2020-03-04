@@ -12,14 +12,9 @@ data class PluginDescriptor(
     val description: String,
     val webSite: String,
     val versionsMappings: List<VersionsMapping>,
-    val deprecated: Boolean
+    val deprecated: Boolean = false,
+    val tags: List<String> = listOf()
 ) {
     @Transient
     var filePath: String? = null
 }
-
-@Serializable
-data class VersionsMapping(
-    val ktorVersionRange: String,
-    val coordinates: String
-)

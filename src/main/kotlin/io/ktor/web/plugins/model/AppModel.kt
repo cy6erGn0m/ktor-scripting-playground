@@ -1,6 +1,7 @@
 package io.ktor.web.plugins.model
 
 import io.ktor.http.*
+import io.ktor.web.plugins.collectTags
 import kotlinx.serialization.*
 
 @Serializable
@@ -13,4 +14,7 @@ data class AppModel(
 ) {
     @Transient
     val byPluginId = allPlugins.associateBy { it.id }
+
+    @Transient
+    val tags: Map<String, List<PluginDescriptor>> = collectTags(allPlugins)
 }

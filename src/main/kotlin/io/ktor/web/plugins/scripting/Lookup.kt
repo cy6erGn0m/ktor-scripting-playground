@@ -22,6 +22,13 @@ object Lookup : CoroutineScope {
         val routePath: String
     ) {
         val route: RoutingPath = RoutingPath.parse(routePath)
+        val routeParameterNames: List<String> = route.parts
+            .filter { it.kind == RoutingPathSegmentKind.Parameter }
+            .mapNotNull { segment ->
+                segment.value.substringAfter("{").substringBefore("}")
+                    .trimStart().trimEnd(' ', '?', '.')
+                    .takeIf { it.isNotEmpty() }
+            }
     }
 
     override val coroutineContext: CoroutineContext
