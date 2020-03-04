@@ -11,6 +11,8 @@ import io.ktor.server.engine.*
 import io.ktor.util.*
 import io.ktor.web.plugins.scripting.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.actor
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.*
 import kotlinx.html.*
 import kotlinx.html.stream.*
@@ -22,7 +24,14 @@ import kotlin.time.*
 @UseExperimental(KtorExperimentalAPI::class, ExperimentalTime::class)
 fun main() {
     val configDir = File("plugins.d")
+    val docRoot = File("docs")
     val model = AtomicReference(collectModel(configDir).first)
+
+    val siteGenerator = GlobalScope.actor<Unit>(capacity = 2) {
+        consumeEach {
+            generateSite(docRoot, model.get(), Lookup.pageNames())
+        }
+    }
 
     fileChanges(configDir) { it.isDirectory || it.extension == "json" }
         .debounceChanges(300.milliseconds)
@@ -33,6 +42,8 @@ fun main() {
             } catch (cause: Throwable) {
                 cause.printStackTrace()
             }
+        }.onEach {
+            siteGenerator.send(Unit)
         }.launchIn(GlobalScope)
 
     val server = embeddedServer(CIO, port = 8080) {
@@ -71,17 +82,20 @@ fun main() {
 
         val pageScriptChanges = fileChanges(Lookup.pagesRoot) {
             it.isDirectory || it.name.endsWith(".page.kts")
-        }.debounceChanges(500.milliseconds)
+        }.filter { it.isFile }
+            .debounceChanges(500.milliseconds)
 
         routing {
             Lookup.collecting(pageScriptChanges)
                 .awaitingSuccessful()
+                .onEach { siteGenerator.send(Unit) }
                 .collectAndRegisterRoutes(this) { model.get() }
         }
     }
 
     server.addShutdownHook {
         println("Shutting down...")
+        siteGenerator.close()
     }
     server.start(wait = true)
 }

@@ -5,8 +5,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.slf4j.*
 import java.io.*
-import java.util.concurrent.*
 import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
@@ -22,6 +22,13 @@ object Lookup : CoroutineScope {
         val routePath: String
     ) {
         val route: RoutingPath = RoutingPath.parse(routePath)
+        val routeParameterNames: List<String> = route.parts
+            .filter { it.kind == RoutingPathSegmentKind.Parameter }
+            .mapNotNull { segment ->
+                segment.value.substringAfter("{").substringBefore("}")
+                    .trimStart().trimEnd(' ', '?', '.')
+                    .takeIf { it.isNotEmpty() }
+            }
     }
 
     override val coroutineContext: CoroutineContext
@@ -38,6 +45,8 @@ object Lookup : CoroutineScope {
     private val pageScriptClass = PageScript::class
 
     val pagesRoot: File = File("pages").absoluteFile
+
+    fun pageNames(): List<String> = compiledCache.keys().toList().map { File(it).relativeTo(pagesRoot).path.removeSuffix(".page.kts") }
 
     fun collecting(input: Flow<File>): Flow<Deferred<CompiledPage>> = input.mapNotNull { file ->
         if (file.exists()) {

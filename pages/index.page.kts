@@ -20,6 +20,22 @@ pageTemplate("Ktor plugin portal") {
     }
 
     div {
+        p {
+            text("Tags:")
+        }
+        p {
+            model.tags.forEach { (tag, _) ->
+                span {
+                    a(href = "/plugins/tag/$tag.html") {
+                        text(tag)
+                    }
+                }
+                text(" ")
+            }
+        }
+    }
+
+    div {
         h2 { text("Featured plugins") }
 
         table {

@@ -36,6 +36,7 @@ private fun PluginDescriptor.validate(validationResult: ValidationResult) {
     validateTitle(validationResult)
     validateDescription(validationResult)
     validateWebSite(validationResult)
+    validateTags(validationResult)
 
     versionsMappings.forEach { version ->
         version.validateMapping(this, validationResult)
@@ -141,6 +142,27 @@ private fun PluginDescriptor.validateWebSite(validationResult: ValidationResult)
 
         if (url.userInfo != null) {
             validationResult.error(this, "webSite should have no user:pass specification.")
+        }
+    }
+}
+
+private val VALID_TAG_CHARACTERS = (('a' .. 'z') + ('A' .. 'Z') + ('0' .. '9') + '-').toSet()
+
+private fun PluginDescriptor.validateTags(validationResult: ValidationResult) {
+    if (tags.isEmpty()) {
+        validationResult.error(
+            this, "No tags specified for plugin $id"
+        )
+    }
+
+    tags.forEach { tag ->
+        if (tag.trim() != tag) {
+            validationResult.error(this, "Trailing or leading spaces in tag '$tag'")
+        }
+
+        if (!tag.all { it in VALID_TAG_CHARACTERS}) {
+            validationResult.error(this,
+                "Only latin letters, digits and minus sign are allowed in tag, got tag '$tag'")
         }
     }
 }

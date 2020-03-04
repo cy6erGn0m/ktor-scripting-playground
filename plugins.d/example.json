@@ -4,6 +4,7 @@
   "deprecated": false,
   "webSite": "https://ktor.io",
   "description": "This is an example plugin description.\n\nThe second paragraph.",
+  "tags": ["Testing", "Server"],
   "versionsMappings": [
     {
       "ktorVersionRange": "1.3.0+",
